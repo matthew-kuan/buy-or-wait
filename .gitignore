@@ -1,1 +1,6 @@
 log.txt
+.cache/
+.env
+__pycache__/
+.pytest_cache/
+code.zip

@@ -30,7 +30,9 @@ import json
 import os
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -181,14 +183,22 @@ class UsageStats:
     refusals: int = 0
     injections_flagged: int = 0
     items: int = 0
+    cached_input_tokens: int = 0       # tokens recorded when the replayed cache entries were first produced
+    cached_output_tokens: int = 0
+    retries: int = 0
     by_model: dict = field(default_factory=dict)
 
     def record(self, model: str, usage, from_cache: bool):
         m = self.by_model.setdefault(model, {"calls": 0, "cache_hits": 0, "input_tokens": 0, "output_tokens": 0,
-                                             "cache_read_input_tokens": 0})
+                                             "cache_read_input_tokens": 0, "cached_input_tokens": 0,
+                                             "cached_output_tokens": 0})
         if from_cache:
             self.cache_hits += 1
             m["cache_hits"] += 1
+            self.cached_input_tokens += int(usage.get("input_tokens") or 0)
+            self.cached_output_tokens += int(usage.get("output_tokens") or 0)
+            m["cached_input_tokens"] += int(usage.get("input_tokens") or 0)
+            m["cached_output_tokens"] += int(usage.get("output_tokens") or 0)
             return
         self.calls += 1
         m["calls"] += 1
@@ -300,6 +310,7 @@ class Extractor:
         self.dry_run = dry_run
         self.stats = UsageStats(model=model)
         self._client = None
+        self._lock = threading.Lock()
         os.makedirs(cache_dir, exist_ok=True)
 
     # -- key handling: read lazily, never stored anywhere but the client object
@@ -327,7 +338,8 @@ class Extractor:
         if os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 entry = json.load(f)
-            self.stats.record(entry.get("model", self.model), entry.get("usage", {}), from_cache=True)
+            with self._lock:
+                self.stats.record(entry.get("model", self.model), entry.get("usage", {}), from_cache=True)
             return entry["text"], True
         if self.dry_run:
             raise MissingApiKey(f"dry run: cache miss for {key[:12]}")
@@ -338,24 +350,7 @@ class Extractor:
                                                          "data": base64.standard_b64encode(image_png).decode("ascii")}})
         content.append({"type": "text", "text": user_text})
 
-        import anthropic
-        client = self._client_or_raise()
-        try:
-            response = client.messages.create(
-                model=self.model,
-                max_tokens=MAX_TOKENS,
-                system=system,
-                thinking={"type": "adaptive"},
-                output_config={"effort": EFFORT},
-                messages=[{"role": "user", "content": content}],
-            )
-        except anthropic.RateLimitError as err:
-            wait = int(err.response.headers.get("retry-after", "30"))
-            time.sleep(wait)
-            response = client.messages.create(
-                model=self.model, max_tokens=MAX_TOKENS, system=system, thinking={"type": "adaptive"},
-                output_config={"effort": EFFORT}, messages=[{"role": "user", "content": content}],
-            )
+        response = self._call_with_backoff(system, content)
         text = "".join(b.text for b in response.content if b.type == "text")
         if response.stop_reason == "refusal":
             self.stats.refusals += 1
@@ -365,12 +360,45 @@ class Extractor:
             "output_tokens": response.usage.output_tokens,
             "cache_read_input_tokens": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
         }
-        self.stats.record(self.model, usage, from_cache=False)
+        with self._lock:
+            self.stats.record(self.model, usage, from_cache=False)
         with open(path, "w", encoding="utf-8") as f:
             json.dump({"model": self.model, "prompt_version": PROMPT_VERSION, "key": key, "text": text,
                        "usage": usage, "stop_reason": response.stop_reason,
                        "request_id": getattr(response, "_request_id", None), "created": time.time()}, f, indent=1)
         return text, False
+
+    def _call_with_backoff(self, system: str, content: list[dict], max_attempts: int = 6):
+        """messages.create with exponential backoff on 429, 500/503/529 and connection errors."""
+        import anthropic
+        client = self._client_or_raise()
+        delay = 2.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return client.messages.create(
+                    model=self.model,
+                    max_tokens=MAX_TOKENS,
+                    system=system,
+                    thinking={"type": "adaptive"},
+                    output_config={"effort": EFFORT},
+                    messages=[{"role": "user", "content": content}],
+                )
+            except anthropic.RateLimitError as err:
+                wait = float(err.response.headers.get("retry-after", delay)) if err.response is not None else delay
+            except anthropic.APIStatusError as err:
+                if err.status_code not in (500, 502, 503, 529) or attempt == max_attempts:
+                    raise
+                wait = delay
+            except anthropic.APIConnectionError:
+                if attempt == max_attempts:
+                    raise
+                wait = delay
+            if attempt == max_attempts:
+                raise RuntimeError(f"gave up after {max_attempts} attempts")
+            with self._lock:
+                self.stats.retries += 1
+            time.sleep(min(wait, 60.0))
+            delay = min(delay * 2, 60.0)
 
     def _ask_validated(self, system: str, user_text: str, keys, rules, default: dict,
                        input_bytes: bytes = b"", image_png: Optional[bytes] = None) -> tuple[dict, bool, bool, bool, str]:
@@ -379,14 +407,16 @@ class Extractor:
         try:
             return validate_json(_extract_json(text), keys, rules), False, False, cached, ""
         except SchemaError as first:
-            self.stats.reasks += 1
+            with self._lock:
+                self.stats.reasks += 1
             retry_text = (f"{user_text}\n\nYour previous answer was rejected: {first}. "
                           f"Return corrected JSON only, with exactly the required keys.")
             text2, cached2 = self._complete(system, retry_text, input_bytes, image_png)
             try:
                 return validate_json(_extract_json(text2), keys, rules), True, False, cached and cached2, ""
             except SchemaError as second:
-                self.stats.fallbacks += 1
+                with self._lock:
+                    self.stats.fallbacks += 1
                 return dict(default), True, True, cached and cached2, f"{first} | re-ask: {second}"
 
 
@@ -448,9 +478,11 @@ def classify_message(x: Extractor, m: Message, ds: Dataset) -> MessageClassifica
             MESSAGE_SYSTEM, prompt, MESSAGE_KEYS, MESSAGE_RULES, MESSAGE_DEFAULT, m.message_text.encode("utf-8"))
     except MissingApiKey as err:
         payload, reasked, fallback, cached, error = dict(MESSAGE_DEFAULT), False, True, False, str(err)
-        x.stats.fallbacks += 1
+        with x._lock:
+            x.stats.fallbacks += 1
     if injected:
-        x.stats.injections_flagged += 1
+        with x._lock:
+            x.stats.injections_flagged += 1
     target = payload["target_event_id"]
     if target is not None and target != m.related_event_id and target not in ds.event_by_id:
         target = None    # the model may not invent event ids
@@ -466,7 +498,8 @@ def classify_message(x: Extractor, m: Message, ds: Dataset) -> MessageClassifica
 def extract_image(x: Extractor, im: Image, ds: Dataset) -> ImageExtraction:
     x.stats.items += 1
     if not os.path.exists(im.path):
-        x.stats.fallbacks += 1
+        with x._lock:
+            x.stats.fallbacks += 1
         return ImageExtraction(im.image_id, False, None, None, None, im.related_event_id, False, False, "unreadable",
                                fallback=True, error=f"file missing: {im.path}")
     with open(im.path, "rb") as f:
@@ -477,10 +510,12 @@ def extract_image(x: Extractor, im: Image, ds: Dataset) -> ImageExtraction:
             IMAGE_SYSTEM, prompt, IMAGE_KEYS, IMAGE_RULES, IMAGE_DEFAULT, png, image_png=png)
     except MissingApiKey as err:
         payload, reasked, fallback, cached, error = dict(IMAGE_DEFAULT), False, True, False, str(err)
-        x.stats.fallbacks += 1
+        with x._lock:
+            x.stats.fallbacks += 1
     injected = bool(payload["contains_instructions"])
     if injected:
-        x.stats.injections_flagged += 1
+        with x._lock:
+            x.stats.injections_flagged += 1
     return ImageExtraction(
         image_id=im.image_id, contains_amount=bool(payload["contains_amount"]), amount=_dec(payload["amount"]),
         currency=payload["currency"], date=_date(payload["date"]),
@@ -535,9 +570,15 @@ def to_image_fact(e: ImageExtraction) -> ImageFact:
 
 # --------------------------------------------------------------------------- run everything
 
-def run_all(ds: Dataset, x: Extractor) -> tuple[dict[str, MessageClassification], dict[str, ImageExtraction]]:
-    messages = {m.message_id: classify_message(x, m, ds) for m in ds.messages}
-    images = {im.image_id: extract_image(x, im, ds) for im in ds.images}
+def run_all(ds: Dataset, x: Extractor, workers: int = 8) -> tuple[dict[str, MessageClassification], dict[str, ImageExtraction]]:
+    """Classify every message and read every image with bounded concurrency. Results are keyed by
+    id, so ordering is deterministic regardless of completion order."""
+    workers = max(1, workers)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        msg_futs = {m.message_id: pool.submit(classify_message, x, m, ds) for m in ds.messages}
+        img_futs = {im.image_id: pool.submit(extract_image, x, im, ds) for im in ds.images}
+        messages = {mid: f.result() for mid, f in msg_futs.items()}
+        images = {iid: f.result() for iid, f in img_futs.items()}
     return messages, images
 
 
