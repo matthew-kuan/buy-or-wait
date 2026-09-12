@@ -1,0 +1,304 @@
+
+==============================================================================
+1. Row counts, columns, null counts
+==============================================================================
+
+financial_profiles.csv: 275 rows, 10 columns
+  columns: user_id, home_currency, current_available_balance, minimum_balance_to_keep, financial_priorities, expense_categories_to_protect, expense_categories_user_is_willing_to_reduce, expense_categories_user_is_willing_to_stop, payment_methods_user_will_consider, max_installment_months
+  null counts: {'expense_categories_user_is_willing_to_reduce': 39, 'expense_categories_user_is_willing_to_stop': 62, 'max_installment_months': 119}
+
+financial_events.csv: 25342 rows, 14 columns
+  columns: event_id, user_id, event_type, description, category, direction, amount, currency, event_date, settlement_date, status, linked_event_id, flexibility, minimum_allowed_amount
+  null counts: {'amount': 16, 'settlement_date': 10, 'linked_event_id': 25284, 'minimum_allowed_amount': 22435}
+
+exchange_rates.csv: 134 rows, 4 columns
+  columns: rate_date, from_currency, to_currency, rate
+  null counts: none
+
+requests.csv: 250 rows, 8 columns
+  columns: request_id, user_id, request_date, request_type, requested_amount, desired_completion_date, allows_partial_payment, request_text
+  null counts: none
+
+sample_requests.csv: 25 rows, 15 columns
+  columns: request_id, user_id, request_date, request_type, requested_amount, desired_completion_date, allows_partial_payment, request_text, amount_safe_to_pay, affordability_status, recommended_payment_method, payment_plan, earliest_date_for_full_payment, spending_changes_needed, decision_explanation
+  null counts: {'earliest_date_for_full_payment': 7}
+
+request_payment_options.csv: 790 rows, 9 columns
+  columns: payment_option_id, request_id, payment_method, payment_amount, number_of_payments, first_payment_date, payment_frequency_days, financing_fee, total_payable_amount
+  null counts: {'payment_frequency_days': 275}
+
+messages.csv: 215 rows, 7 columns
+  columns: message_id, user_id, request_id, related_event_id, sent_at, source_type, message_text
+  null counts: {'request_id': 87, 'related_event_id': 176}
+
+images.csv: 16 rows, 4 columns
+  columns: image_id, user_id, request_id, related_event_id
+  null counts: none
+
+output.csv: 250 rows, 8 columns
+  columns: request_id, amount_safe_to_pay, affordability_status, recommended_payment_method, payment_plan, earliest_date_for_full_payment, spending_changes_needed, decision_explanation
+  null counts: {'amount_safe_to_pay': 250, 'affordability_status': 250, 'recommended_payment_method': 250, 'payment_plan': 250, 'earliest_date_for_full_payment': 250, 'spending_changes_needed': 250, 'decision_explanation': 250}
+
+media/images: 16 png files
+
+==============================================================================
+2. Distinct values with counts
+==============================================================================
+
+financial_events.csv.event_type (8 distinct)
+  'expense': 20525
+  'subscription': 2488
+  'income': 1696
+  'debt_payment': 567
+  'investment_purchase': 29
+  'refund': 22
+  'investment_valuation': 10
+  'investment_sale': 5
+
+financial_events.csv.status (6 distinct)
+  'settled': 25148
+  'pending': 71
+  'scheduled': 70
+  'cancelled': 22
+  'failed': 21
+  'unrealized': 10
+
+financial_events.csv.direction (3 distinct)
+  'debit': 23609
+  'credit': 1723
+  'non_cash': 10
+
+financial_events.csv.flexibility (4 distinct)
+  'fixed': 21138
+  'reducible': 2682
+  'stoppable': 1297
+  'reducible_or_stoppable': 225
+
+financial_events.csv.category (22 distinct)
+  'groceries': 5812
+  'transport': 5626
+  'dining': 3479
+  'salary': 1690
+  'utilities': 1452
+  'rent': 1355
+  'cloud_storage': 833
+  'shopping': 813
+  'streaming': 683
+  'debt_repayment': 553
+  'entertainment': 521
+  'insurance': 456
+  'music_subscription': 451
+  'healthcare': 356
+  'delivery_membership': 351
+  'education': 306
+  'housing': 246
+  'gym': 170
+  'family_support': 125
+  'investment': 44
+  'work_expense': 14
+  'windfall': 6
+
+financial_events.csv.currency (5 distinct)
+  'INR': 6457
+  'EUR': 5585
+  'IDR': 4992
+  'ZAR': 4489
+  'USD': 3819
+
+financial_profiles.csv.home_currency (5 distinct)
+  'INR': 67
+  'EUR': 62
+  'IDR': 55
+  'ZAR': 51
+  'USD': 40
+
+requests.csv.request_type (9 distinct)
+  'family_transfer': 28
+  'purchase': 28
+  'investment': 28
+  'debt_repayment': 28
+  'travel': 28
+  'housing': 28
+  'education': 28
+  'emergency_expense': 27
+  'other': 27
+
+requests.csv.allows_partial_payment (2 distinct)
+  'false': 170
+  'true': 80
+
+financial_profiles.csv.payment_methods_user_will_consider (7 distinct)
+  'full_payment': 60
+  'partial_payment|installments': 52
+  'installments': 41
+  'full_payment|partial_payment': 40
+  'full_payment|installments': 35
+  'full_payment|partial_payment|installments': 28
+  'partial_payment': 19
+
+request_payment_options.csv.payment_method (2 distinct)
+  'installments': 515
+  'full_payment': 275
+
+==============================================================================
+3. Events with blank amount, and image coverage
+==============================================================================
+blank-amount events: 16; with image row: 16; without: 0
+  - event_253 user_03 income/salary settled settle=2019-08-31 images=['image_01'] file_present=[True]
+  - event_1442 user_16 expense/rent scheduled settle=2023-08-16 images=['image_02'] file_present=[True]
+  - event_1545 user_17 expense/groceries settled settle=2026-02-27 images=['image_03'] file_present=[True]
+  - event_1700 user_19 expense/groceries settled settle=2024-09-03 images=['image_04'] file_present=[True]
+  - event_1786 user_20 expense/utilities pending settle=2026-02-09 images=['image_05'] file_present=[True]
+  - event_3051 user_33 expense/groceries settled settle=2026-01-06 images=['image_06'] file_present=[True]
+  - event_3231 user_35 expense/dining settled settle=2025-10-29 images=['image_07'] file_present=[True]
+  - event_4535 user_48 expense/housing settled settle=2026-07-24 images=['image_08'] file_present=[True]
+  - event_5170 user_55 expense/utilities settled settle=2026-06-07 images=['image_09'] file_present=[True]
+  - event_6033 user_64 expense/groceries pending settle=2024-06-10 images=['image_10'] file_present=[True]
+  - event_6859 user_73 expense/healthcare scheduled settle=2023-01-23 images=['image_11'] file_present=[True]
+  - event_7307 user_78 expense/transport settled settle=2025-10-01 images=['image_12'] file_present=[True]
+  - event_7941 user_84 expense/shopping settled settle=2026-04-03 images=['image_13'] file_present=[True]
+  - event_9421 user_101 expense/healthcare settled settle=2025-11-02 images=['image_14'] file_present=[True]
+  - event_9806 user_105 expense/transport settled settle=2026-06-07 images=['image_15'] file_present=[True]
+  - event_10521 user_113 expense/transport settled settle=2026-09-03 images=['image_16'] file_present=[True]
+image rows whose related_event_id is not an event: 0
+  (none)
+image rows with no png on disk: 0 []
+
+==============================================================================
+4. linked_event_id integrity and status pairs
+==============================================================================
+events with linked_event_id: 58; dangling: 0
+  (none)
+status pairs (child type/status -> parent type/status):
+  refund/settled -> expense/settled: 14
+  investment_valuation/unrealized -> investment_purchase/settled: 10
+  expense/settled -> expense/cancelled: 8
+  refund/pending -> expense/settled: 8
+  debt_payment/scheduled -> debt_payment/failed: 7
+  expense/pending -> expense/settled: 6
+  investment_sale/settled -> investment_purchase/settled: 5
+links crossing users: 0 []
+
+==============================================================================
+5. Duplicate candidates (same user_id, event_date, amount, currency, description)
+==============================================================================
+duplicate groups: 0; rows involved: 0
+  (none)
+status combinations within groups: {}
+
+==============================================================================
+6. Foreign-currency events vs exchange_rates.csv
+==============================================================================
+foreign-currency events: 140; with exact rate row: 140; misses: 0
+  by type/status: {('income', 'settled'): 131, ('income', 'scheduled'): 8, ('expense', 'settled'): 1}
+  by pair: {('USD', 'IDR'): 28, ('USD', 'INR'): 54, ('USD', 'EUR'): 22, ('EUR', 'ZAR'): 20, ('EUR', 'USD'): 16}
+misses:
+  (none)
+events whose user has no profile: 0 []
+rate rows not matched by any event: 33 of 134
+  pairs: {('EUR', 'ZAR'): 22, ('USD', 'EUR'): 25, ('USD', 'IDR'): 30, ('USD', 'INR'): 33, ('EUR', 'USD'): 24}
+  date range: 2023-10-15 .. 2026-11-15
+
+==============================================================================
+7. Requests: profile and payment-option coverage
+==============================================================================
+requests.csv: 250 rows; no profile: 0 []; no options: 0 []; no full_payment option: 0 []
+sample_requests.csv: 25 rows; no profile: 0 []; no options: 0 []; no full_payment option: 0 []
+option rows for unknown requests: 0 []
+options per request: {2: 65, 3: 180, 4: 30}
+duplicate request_ids in requests.csv: []
+output.csv template ids == requests.csv ids (same order): True
+users with more than one request (incl. samples): 0 []
+
+==============================================================================
+8. Per-request evidence (messages, images, scheduled events in the 90-day window)
+==============================================================================
+of 250 requests: {'has_messages': 198, 'has_images': 11, 'has_scheduled_in_window': 58, 'has_pending_in_window': 61, 'has_any_event_after_request': 109, 'has_scheduled_salary_in_window': 42}
+messages: total 215; with request_id 128; with related_event_id 39; user-level only 76; distinct users 215; users with >1 message 0
+messages.source_type: {'employer': 126, 'service_provider': 31, 'bank': 18, 'merchant': 17, 'financial_service': 23}
+messages with related_event_id not in events: []
+messages dated after their request_date: 0
+images: total 16; distinct users 16
+message count distribution per request: {0: 52, 1: 198}
+image count distribution per request: {0: 239, 1: 11}
+scheduled-in-window count distribution: {0: 192, 1: 54, 2: 4}
+pending-in-window count distribution: {0: 189, 1: 60, 2: 1}
+requests with messages or images (request_id msgs imgs sched pend):
+  - request_26 msgs=1 imgs=0 sched=0 pend=0
+  - request_27 msgs=1 imgs=0 sched=0 pend=0
+  - request_28 msgs=1 imgs=0 sched=0 pend=0
+  - request_29 msgs=1 imgs=0 sched=0 pend=0
+  - request_32 msgs=1 imgs=0 sched=0 pend=0
+  - request_33 msgs=1 imgs=1 sched=0 pend=0
+  - request_34 msgs=1 imgs=0 sched=0 pend=0
+  - request_35 msgs=1 imgs=1 sched=0 pend=1
+  - request_36 msgs=1 imgs=0 sched=0 pend=0
+  - request_37 msgs=1 imgs=0 sched=0 pend=0
+  - request_38 msgs=1 imgs=0 sched=0 pend=0
+  - request_40 msgs=1 imgs=0 sched=0 pend=1
+  - request_42 msgs=1 imgs=0 sched=0 pend=1
+  - request_43 msgs=1 imgs=0 sched=0 pend=1
+  - request_44 msgs=1 imgs=0 sched=1 pend=0
+  - request_45 msgs=1 imgs=0 sched=0 pend=0
+  - request_47 msgs=1 imgs=0 sched=0 pend=0
+  - request_48 msgs=1 imgs=1 sched=0 pend=0
+  - request_49 msgs=1 imgs=0 sched=0 pend=0
+  - request_50 msgs=1 imgs=0 sched=0 pend=0
+  - request_52 msgs=1 imgs=0 sched=0 pend=0
+  - request_53 msgs=1 imgs=0 sched=0 pend=1
+  - request_54 msgs=1 imgs=0 sched=0 pend=0
+  - request_55 msgs=0 imgs=1 sched=1 pend=0
+  - request_57 msgs=1 imgs=0 sched=0 pend=0
+  - request_58 msgs=1 imgs=0 sched=0 pend=0
+  - request_59 msgs=1 imgs=0 sched=0 pend=0
+  - request_60 msgs=1 imgs=0 sched=0 pend=1
+  - request_61 msgs=1 imgs=0 sched=0 pend=1
+  - request_62 msgs=1 imgs=0 sched=0 pend=1
+  ... (170 more, 200 total)
+desired_completion_date - request_date (days): min 6, max 86, beyond 89 days: 0
+history length before request (days): min 175, max 179
+
+==============================================================================
+9. sample_requests.csv: output distributions and per-row summary
+==============================================================================
+
+amount_safe_to_pay: {'== requested': 4, 'between': 21}
+
+affordability_status: {'affordable_now': 3, 'affordable_with_plan': 9, 'affordable_later': 6, 'not_affordable': 7}
+
+recommended_payment_method: {'full_payment': 6, 'installments': 5, 'wait': 6, 'not_recommended': 7, 'partial_payment': 1}
+
+payment_plan: {'1 payment(s)': 12, '3 payment(s)': 5, 'none': 7, '2 payment(s)': 1}
+
+earliest_date_for_full_payment: {'== request_date': 4, 'later': 14, 'empty': 7}
+
+spending_changes_needed: {'none': 22, 'stop:event_476': 1, 'reduce_to:event_989:665950': 1, 'stop:event_1815|reduce_to:event_1816:23.50': 1}
+spending change kinds: {'none': 22, 'stop': 2, 'reduce_to': 2}
+status x method: {('affordable_now', 'full_payment'): 3, ('affordable_with_plan', 'installments'): 5, ('affordable_later', 'wait'): 6, ('not_affordable', 'not_recommended'): 7, ('affordable_with_plan', 'full_payment'): 3, ('affordable_with_plan', 'partial_payment'): 1}
+
+per-row (id date | req amt | balance min | methods maxinst partial | safe status method plan earliest changes | expl chars):
+  request_01 2024-03-03 | 25256 ZAR | bal 58481.1 min 18000 | full_payment maxinst=- partial=true | 25256 affordable_now full_payment 2024-03-03:25256 earliest=2024-03-03 none | 86
+  request_02 2025-08-05 | 46018000 IDR | bal 60383889.2 min 29158400 | partial_payment|installments maxinst=7 partial=false | 17229139.2 affordable_with_plan installments 2025-08-08:15952906.67|2025-09-07:15952906.67|2025-10-07:15952906.67 earliest=2025-09-15 none | 111
+  request_03 2019-09-03 | 5491000 IDR | bal 5810300 min 2668700 | full_payment|partial_payment|installments maxinst=2 partial=false | 873000 affordable_later wait 2019-11-15:5491000 earliest=2019-11-15 none | 117
+  request_04 2024-06-04 | 12693000 IDR | bal 52206950 min 30686600 | full_payment maxinst=- partial=true | 8401800 affordable_later wait 2024-06-15:12693000 earliest=2024-06-15 none | 117
+  request_05 2025-11-06 | 15488 ZAR | bal 46475.1 min 13100 | full_payment|partial_payment|installments maxinst=4 partial=false | 737 not_affordable not_recommended none earliest=- none | 114
+  request_06 2026-01-03 | 620.4 EUR | bal 1942.4 min 800 | full_payment|partial_payment maxinst=- partial=false | 603.3 affordable_with_plan full_payment 2026-01-03:620.40 earliest=2026-01-15 stop:event_476 | 98
+  request_07 2024-09-05 | 197400 INR | bal 218945.56 min 93000 | installments maxinst=12 partial=true | 87170.56 affordable_with_plan installments 2024-09-12:68432|2024-10-10:68432|2024-11-07:68432 earliest=2024-10-23 none | 104
+  request_08 2025-02-07 | 996.6 EUR | bal 1536.57 min 800 | full_payment maxinst=- partial=false | 284.57 affordable_later wait 2025-04-15:996.60 earliest=2025-04-15 none | 105
+  request_09 2026-07-04 | 166.61 EUR | bal 2231.1 min 600 | full_payment|partial_payment|installments maxinst=2 partial=true | 166.61 affordable_now full_payment 2026-07-04:166.61 earliest=2026-07-04 none | 85
+  request_10 2024-12-06 | 266700 INR | bal 750155 min 225400 | partial_payment|installments maxinst=6 partial=true | 12700 not_affordable not_recommended none earliest=- none | 116
+  request_11 2025-05-03 | 13110000 IDR | bal 63531795 min 34140600 | full_payment maxinst=- partial=false | 12510645 affordable_with_plan full_payment 2025-05-03:13110000 earliest=2025-07-15 reduce_to:event_989:665950 | 126
+  request_12 2026-04-05 | 65164 ZAR | bal 193089.89 min 43200 | partial_payment|installments maxinst=11 partial=false | 65164 affordable_with_plan installments 2026-04-19:22590.19|2026-05-20:22590.19|2026-06-20:22590.19 earliest=2026-04-05 none | 103
+  request_13 2024-03-07 | 941.6 EUR | bal 2789.52 min 1300 | full_payment maxinst=- partial=true | 433.4 affordable_later wait 2024-05-15:941.60 earliest=2024-05-15 none | 105
+  request_14 2025-08-04 | 5414.2 EUR | bal 3931.74 min 2200 | partial_payment maxinst=- partial=true | 597.74 not_affordable not_recommended none earliest=- none | 144
+  request_15 2026-01-06 | 3685 EUR | bal 1770.05 min 1200 | partial_payment maxinst=- partial=false | 83.05 not_affordable not_recommended none earliest=- none | 113
+  request_16 2023-08-12 | 122500 INR | bal 362370 min 122400 | full_payment|installments maxinst=2 partial=true | 122500 affordable_now full_payment 2023-08-12:122500 earliest=2023-08-12 none | 88
+  request_17 2026-03-01 | 274600 INR | bal 550379.58 min 166100 | installments maxinst=3 partial=false | 243849.58 affordable_with_plan installments 2026-03-01:95194.67|2026-03-31:95194.67|2026-04-30:95194.67 earliest=2026-03-15 none | 103
+  request_18 2026-07-07 | 3246.1 EUR | bal 2486 min 1400 | full_payment|partial_payment maxinst=- partial=false | 462 affordable_later wait 2026-09-15:3246.10 earliest=2026-09-15 none | 113
+  request_19 2024-09-04 | 39660 INR | bal 199545 min 92800 | partial_payment|installments maxinst=2 partial=true | 28820 affordable_with_plan partial_payment 2024-09-04:28820|2024-09-15:10840 earliest=2024-09-15 none | 147
+  request_20 2026-02-07 | 303700 INR | bal 102609.05 min 64500 | full_payment|partial_payment|installments maxinst=11 partial=false | 5400 not_affordable not_recommended none earliest=- none | 115
+  request_21 2026-04-03 | 1574.4 USD | bal 3911.35 min 1800 | full_payment maxinst=- partial=false | 1543.35 affordable_with_plan full_payment 2026-04-03:1574.40 earliest=2026-04-15 stop:event_1815|reduce_to:event_1816:23.50 | 158
+  request_22 2024-12-05 | 731.5 EUR | bal 1132.46 min 500 | installments maxinst=6 partial=true | 475.46 affordable_with_plan installments 2024-12-08:253.59|2025-01-05:253.59|2025-02-02:253.59 earliest=2025-01-15 none | 99
+  request_23 2025-05-07 | 38016 ZAR | bal 51957.9 min 27000 | full_payment|partial_payment|installments maxinst=12 partial=false | 9152 affordable_later wait 2025-07-15:38016 earliest=2025-07-15 none | 107
+  request_24 2026-01-04 | 109600 INR | bal 85045 min 51000 | partial_payment maxinst=- partial=true | 13420 not_affordable not_recommended none earliest=- none | 143
+  request_25 2024-03-06 | 60496000 IDR | bal 32063050 min 23379100 | full_payment|installments maxinst=3 partial=true | 1425000 not_affordable not_recommended none earliest=- none | 116
