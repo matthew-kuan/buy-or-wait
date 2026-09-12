@@ -1,0 +1,22 @@
+{
+ "purpose": "blank-amount event whose image is unreadable",
+ "evidence": {
+  "images": {
+   "img_2": {
+    "contains_amount": false,
+    "amount": null,
+    "currency": null,
+    "date": null,
+    "target_event_id": "g_img_2",
+    "is_recurring": false,
+    "contains_instructions": false,
+    "quality": "unreadable"
+   }
+  }
+ },
+ "review_expected": true,
+ "review_contains": "g_img_2",
+ "excluded": {
+  "g_img_2": "amount_unknown"
+ }
+}

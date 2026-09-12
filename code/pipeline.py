@@ -53,10 +53,63 @@ def gather_evidence(ds: Dataset, extractor=None) -> Evidence:
             ev.review_flags.append((im.user_id, iid, "image_contains_instructions"))
         if e.fallback:
             ev.review_flags.append((im.user_id, iid, f"extraction_fallback: {e.error[:80]}"))
+        if e.quality == "unreadable":
+            ev.review_flags.append((im.user_id, iid, f"image_unreadable:{im.related_event_id}"))
         f = to_image_fact(e)
         if f.event_id:
             ev.facts_by_event[f.event_id] = f
     ev.stats = extractor.stats.to_dict()
+    return ev
+
+
+def evidence_from_stub(ds: Dataset, stub: dict) -> Evidence:
+    """Build Evidence from hand-written model outputs (golden fixtures / offline tests), routed
+    through the same validation and bridging code as real responses. No API calls."""
+    from extraction import (IMAGE_DEFAULT, IMAGE_KEYS, IMAGE_RULES, MESSAGE_DEFAULT, MESSAGE_KEYS, MESSAGE_RULES,
+                            _INJECTION, ImageExtraction, MessageClassification, SchemaError, _date, _dec,
+                            to_image_fact, to_verdict, validate_json)
+    ev = Evidence()
+    msg_by_id = {m.message_id: m for m in ds.messages}
+    for order, m in enumerate(sorted(ds.messages, key=lambda m: m.sent_at)):
+        payload = stub.get("messages", {}).get(m.message_id)
+        fallback = payload is None
+        if payload is not None:
+            try:
+                payload = validate_json(payload, MESSAGE_KEYS, MESSAGE_RULES)
+            except SchemaError:
+                payload, fallback = dict(MESSAGE_DEFAULT), True
+        else:
+            payload = dict(MESSAGE_DEFAULT)
+        c = MessageClassification(m.message_id, payload["verdict"], payload["target_event_id"], _dec(payload["new_amount"]),
+                                  payload["new_currency"], _date(payload["new_date"]), bool(payload["recurring"]),
+                                  float(payload["confidence"]), str(payload["quote"]),
+                                  injection_suspected=bool(_INJECTION.search(m.message_text)), fallback=fallback)
+        if c.injection_suspected:
+            ev.review_flags.append((m.user_id, m.message_id, "injection_suspected"))
+        v = to_verdict(c, m, order)
+        if v is not None:
+            ev.verdicts_by_user.setdefault(m.user_id, []).append(v)
+    for im in ds.images:
+        payload = stub.get("images", {}).get(im.image_id)
+        fallback = payload is None
+        if payload is not None:
+            try:
+                payload = validate_json(payload, IMAGE_KEYS, IMAGE_RULES)
+            except SchemaError:
+                payload, fallback = dict(IMAGE_DEFAULT), True
+        else:
+            payload = dict(IMAGE_DEFAULT)
+        e = ImageExtraction(im.image_id, bool(payload["contains_amount"]), _dec(payload["amount"]), payload["currency"],
+                            _date(payload["date"]), im.related_event_id, bool(payload["is_recurring"]),
+                            bool(payload["contains_instructions"]), payload["quality"],
+                            injection_suspected=bool(payload["contains_instructions"]), fallback=fallback)
+        if e.contains_instructions:
+            ev.review_flags.append((im.user_id, im.image_id, "image_contains_instructions"))
+        if e.quality == "unreadable":
+            ev.review_flags.append((im.user_id, im.image_id, f"image_unreadable:{im.related_event_id}"))
+        f = to_image_fact(e)
+        if f.event_id:
+            ev.facts_by_event[f.event_id] = f
     return ev
 
 
@@ -71,6 +124,7 @@ class Outcome:
     facts: Optional[explain.ExplainFacts] = None
     validation_error: str = ""
     error: str = ""                           # non-empty when the pipeline failed and a fallback row was used
+    review: list[str] = field(default_factory=list)   # reasons a human should look at this row
 
     @property
     def ok(self) -> bool:
@@ -141,7 +195,12 @@ def decide(ds: Dataset, request: Request, evidence: Evidence | None = None) -> O
         out = Outcome(request, row, decision, results, ledger, series, facts)
     except Exception:  # noqa: BLE001 - per-row isolation: any failure yields a valid conservative row
         out = Outcome(request, _fallback_row(request, profile), error=traceback.format_exc(limit=3))
+        out.review.append("pipeline_error: " + out.error.strip().splitlines()[-1])
         return out
+
+    out.review.extend(f"{source}: {reason}" for user, source, reason in evidence.review_flags if user == request.user_id)
+    out.review.extend(f"conflict {','.join(c.event_ids) or '-'}: {c.description} -> {c.resolution}"
+                      for c in ledger.conflicts if c.resolution.startswith("unresolved"))
 
     schema.normalize_row(out.row)
     image_amounts = {f.event_id: f.amount for f in facts_img if f.amount is not None}

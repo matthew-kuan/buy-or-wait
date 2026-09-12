@@ -1,0 +1,10 @@
+event_id,user_id,event_type,description,category,direction,amount,currency,event_date,settlement_date,status,linked_event_id,flexibility,minimum_allowed_amount
+g_rent_1,u1,expense,Apartment rent,rent,debit,3000,ZAR,2025-12-05,2025-12-05,settled,,fixed,
+g_rent_2,u1,expense,Apartment rent,rent,debit,3000,ZAR,2026-01-05,2026-01-05,settled,,fixed,
+g_rent_3,u1,expense,Apartment rent,rent,debit,3000,ZAR,2026-02-05,2026-02-05,settled,,fixed,
+g_sal_1,u1,income,Payroll credit,salary,credit,6000,ZAR,2025-12-25,2025-12-25,settled,,fixed,
+g_sal_2,u1,income,Payroll credit,salary,credit,6000,ZAR,2026-01-25,2026-01-25,settled,,fixed,
+g_sal_3,u1,income,Payroll credit,salary,credit,6000,ZAR,2026-02-25,2026-02-25,settled,,fixed,
+g_str_1,u1,subscription,Family streaming plan,streaming,debit,100,ZAR,2025-12-10,2025-12-10,settled,,stoppable,
+g_str_2,u1,subscription,Family streaming plan,streaming,debit,100,ZAR,2026-01-10,2026-01-10,settled,,stoppable,
+g_str_3,u1,subscription,Family streaming plan,streaming,debit,100,ZAR,2026-02-10,2026-02-10,settled,,stoppable,

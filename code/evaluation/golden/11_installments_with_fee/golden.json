@@ -1,0 +1,6 @@
+{
+ "purpose": "installment option whose total_payable_amount exceeds requested_amount because of fees",
+ "evidence": {},
+ "review_expected": false,
+ "candidate_total_paid": "5250"
+}

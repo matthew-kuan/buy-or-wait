@@ -1,0 +1,2 @@
+request_id,user_id,request_date,request_type,requested_amount,desired_completion_date,allows_partial_payment,request_text
+req_1,u1,2026-03-01,purchase,5000,2026-03-20,true,"Can I afford this ZAR 5,000 purchase by 20 March 2026?"

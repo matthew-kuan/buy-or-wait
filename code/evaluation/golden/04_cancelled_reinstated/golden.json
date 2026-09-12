@@ -1,0 +1,22 @@
+{
+ "purpose": "cancelled event that a later message from a different source tries to reinstate",
+ "evidence": {
+  "messages": {
+   "m2": {
+    "verdict": "confirm",
+    "target_event_id": "g_can_1",
+    "new_amount": 4000,
+    "new_currency": "ZAR",
+    "new_date": "2026-03-06",
+    "recurring": false,
+    "confidence": 0.8,
+    "quote": "has been reinstated and ZAR 4000 will be charged"
+   }
+  }
+ },
+ "review_expected": false,
+ "excluded": {
+  "g_can_1": "status_cancelled"
+ },
+ "conflict_contains": "g_can_1"
+}

@@ -70,10 +70,77 @@ def previous_run():
         return runs[-1], json.load(f)
 
 
+GOLDEN_DIR = os.path.join(HERE, "golden")
+
+
+def run_golden() -> list[dict]:
+    """Run every fixture under golden/ through the real pipeline with stubbed model evidence.
+    Returns one result dict per fixture with a `passed` flag and the failed checks."""
+    from pipeline import evidence_from_stub
+    results = []
+    for name in sorted(os.listdir(GOLDEN_DIR)):
+        d = os.path.join(GOLDEN_DIR, name)
+        if not os.path.isdir(d):
+            continue
+        with open(os.path.join(d, "golden.json"), encoding="utf-8") as f:
+            golden = json.load(f)
+        failures = []
+        try:
+            ds = load_dataset(d)
+            evidence = evidence_from_stub(ds, golden.get("evidence", {}))
+            r = ds.sample_requests[0]
+            out = decide(ds, r, evidence)
+            a = r.answer
+            expected = {"amount_safe_to_pay": schema.format_amount_safe(a.amount_safe_to_pay),
+                        "affordability_status": a.affordability_status, "recommended_payment_method": a.recommended_payment_method,
+                        "payment_plan": a.payment_plan,
+                        "earliest_date_for_full_payment": a.earliest_date_for_full_payment.isoformat() if a.earliest_date_for_full_payment else "",
+                        "spending_changes_needed": a.spending_changes_needed, "decision_explanation": a.decision_explanation}
+            for fld, want in expected.items():
+                if out.row[fld] != want:
+                    failures.append(f"{fld}: got {out.row[fld]!r} want {want!r}")
+            if out.error:
+                failures.append("pipeline crashed: " + out.error.strip().splitlines()[-1])
+            if out.validation_error:
+                failures.append("validation: " + out.validation_error)
+            if golden.get("review_expected") and not out.review:
+                failures.append("expected a review flag, got none")
+            if not golden.get("review_expected") and out.review:
+                failures.append(f"unexpected review flags: {out.review}")
+            needle = golden.get("review_contains")
+            if needle and not any(needle in x for x in out.review):
+                failures.append(f"review flags {out.review} do not mention {needle!r}")
+            for eid, reason in golden.get("excluded", {}).items():
+                x = out.ledger.exclusion_for(eid) if out.ledger else None
+                if x is None or not x.reason.startswith(reason):
+                    failures.append(f"{eid}: expected exclusion {reason!r}, got {x.reason if x else None!r}")
+            needle = golden.get("conflict_contains")
+            if needle and not any(needle in c.event_ids for c in (out.ledger.conflicts if out.ledger else [])):
+                failures.append(f"no conflict recorded for {needle}")
+            total = golden.get("candidate_total_paid")
+            if total and (out.decision is None or out.decision.winner is None or str(out.decision.winner.total_paid) != total):
+                failures.append(f"winner total_paid != {total}")
+            from pipeline import _event_dict, _option_dict, _profile_dict, _request_dict
+            for bad in golden.get("invalid_rows", []):
+                row = {"request_id": r.request_id, **bad}
+                try:
+                    schema.validate_row(row, _request_dict(r), [_option_dict(o) for o in ds.request_options(r.request_id)],
+                                        _profile_dict(ds.profile_by_user[r.user_id]),
+                                        [_event_dict(e) for e in ds.user_events(r.user_id)])
+                    failures.append(f"validate_row accepted an invalid row: {bad['spending_changes_needed']}")
+                except schema.ValidationError:
+                    pass
+        except Exception as err:  # noqa: BLE001 - a fixture must never take the harness down
+            failures.append(f"harness error: {type(err).__name__}: {err}")
+        results.append({"fixture": name, "purpose": golden.get("purpose", ""), "passed": not failures, "failures": failures})
+    return results
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--note", required=True, help="one line: what changed since the last run")
     ap.add_argument("--no-evidence", action="store_true", help="ignore messages and images entirely")
+    ap.add_argument("--skip-golden", action="store_true")
     args = ap.parse_args(argv)
 
     ds = load_dataset()
@@ -88,6 +155,11 @@ def main(argv=None):
         used = sum(len(v) for v in evidence.verdicts_by_user.values())
         evidence_note = (f"evidence: {used} verdicts, {len(evidence.facts_by_event)} image facts "
                          f"(api_calls={s.calls} cache_hits={s.cache_hits} fallbacks={s.fallbacks})")
+
+    golden = [] if args.skip_golden else run_golden()
+    golden_failed = [g["fixture"] for g in golden if not g["passed"]]
+    golden_note = "" if args.skip_golden else f"; golden {len(golden) - len(golden_failed)}/{len(golden)}" + (
+        f" FAILED: {', '.join(golden_failed)}" if golden_failed else "")
 
     prev_run, prev_results = previous_run()
     run = prev_run + 1
@@ -178,7 +250,7 @@ def main(argv=None):
                     "(over requested_amount when expected is 0); within_1pct uses the same relative error.\n\n"
                     "| run | timestamp | note | " + " | ".join(METRIC_COLUMNS) + " | regressed | improved |\n"
                     "|---|---|---|" + "---|" * len(METRIC_COLUMNS) + "---|---|\n")
-        f.write(f"| {run} | {datetime.now(timezone.utc).isoformat(timespec='seconds')} | {args.note} ({evidence_note}) | "
+        f.write(f"| {run} | {datetime.now(timezone.utc).isoformat(timespec='seconds')} | {args.note} ({evidence_note}{golden_note}) | "
                 + " | ".join(f"{metrics[c]:.3f}" for c in METRIC_COLUMNS)
                 + f" | {', '.join(regressed) or '-'} | {', '.join(improved) or '-'} |\n")
 
@@ -197,6 +269,18 @@ def main(argv=None):
     if evidence.review_flags:
         flagged = Counter(reason.split(':')[0] for _, _, reason in evidence.review_flags)
         print(f"review flags: {dict(flagged)}")
+
+    if not args.skip_golden:
+        print(f"\ngolden fixtures: {len(golden) - len(golden_failed)}/{len(golden)} passed")
+        for g in golden:
+            mark = "PASS" if g["passed"] else "FAIL"
+            print(f"  {mark} {g['fixture']:34} {g['purpose']}")
+            for fl in g["failures"]:
+                print(f"       - {fl}")
+
+    if regressed or golden_failed:
+        print(f"\nREGRESSION: samples={regressed or '-'} golden={golden_failed or '-'}")
+        return 1
     return 0
 
 

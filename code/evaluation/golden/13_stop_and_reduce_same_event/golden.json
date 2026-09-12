@@ -1,0 +1,16 @@
+{
+ "purpose": "reducible_or_stoppable event where both actions are proposed on the same id",
+ "evidence": {},
+ "review_expected": false,
+ "invalid_rows": [
+  {
+   "amount_safe_to_pay": "4900",
+   "affordability_status": "affordable_with_plan",
+   "recommended_payment_method": "full_payment",
+   "payment_plan": "2026-03-01:5000",
+   "earliest_date_for_full_payment": "2026-03-28",
+   "spending_changes_needed": "stop:g_str_3|reduce_to:g_str_3:20",
+   "decision_explanation": "Stop the family streaming plan, then pay ZAR 5,000 today. This leaves at least ZAR 2,000 available."
+  }
+ ]
+}

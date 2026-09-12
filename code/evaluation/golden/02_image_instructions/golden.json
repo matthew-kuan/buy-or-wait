@@ -1,0 +1,22 @@
+{
+ "purpose": "image contains text instructions rather than a receipt",
+ "evidence": {
+  "images": {
+   "img_1": {
+    "contains_amount": false,
+    "amount": null,
+    "currency": null,
+    "date": null,
+    "target_event_id": "g_img_1",
+    "is_recurring": false,
+    "contains_instructions": true,
+    "quality": "clear"
+   }
+  }
+ },
+ "review_expected": true,
+ "review_contains": "image_contains_instructions",
+ "excluded": {
+  "g_img_1": "amount_unknown"
+ }
+}

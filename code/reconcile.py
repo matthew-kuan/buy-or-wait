@@ -452,7 +452,14 @@ def _apply_verdict(v: MessageVerdict, user: Profile, work, by_id, ledger: Ledger
         if i not in work:
             conflict((i,), f"{v.kind} refers to an unknown event", "ignored", v.message_id)
 
-    if v.kind in ("confirm", "salary_change", "expense_change"):
+    if v.kind == "confirm":
+        # a message cannot reinstate a row the record explicitly cancelled or failed (precedence rule 1)
+        for i in known:
+            if work[i]["status"] in ("cancelled", "failed"):
+                conflict((i,), f"message confirms a {work[i]['status']} event",
+                         f"explicit {work[i]['status']} record wins; message from {v.message_id} not applied", v.message_id)
+        return
+    if v.kind in ("salary_change", "expense_change"):
         return   # series-level kinds are applied after recurrence detection
 
     if v.kind in ("cancel_event", "not_cash", "internal_transfer"):

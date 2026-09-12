@@ -1,0 +1,2 @@
+message_id,user_id,request_id,related_event_id,sent_at,source_type,message_text
+m2,u1,req_1,g_can_1,2026-02-27T10:00:00Z,merchant,Good news: your cancelled furniture order has been reinstated and ZAR 4000 will be charged on 2026-03-06.

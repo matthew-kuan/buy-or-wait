@@ -1,0 +1,8 @@
+{
+ "purpose": "large pending CREDIT that would flip the decision if counted",
+ "evidence": {},
+ "review_expected": false,
+ "excluded": {
+  "g_ref_1": "pending_credit_not_counted"
+ }
+}

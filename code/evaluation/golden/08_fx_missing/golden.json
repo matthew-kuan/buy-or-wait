@@ -1,0 +1,9 @@
+{
+ "purpose": "foreign-currency event with no matching exchange_rates row",
+ "evidence": {},
+ "review_expected": true,
+ "review_contains": "g_usd_1",
+ "excluded": {
+  "g_usd_1": "fx_missing"
+ }
+}

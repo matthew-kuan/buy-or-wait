@@ -1,0 +1,227 @@
+{
+ "request_01": {
+  "all_ok": true,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": true,
+  "changes_ok": true
+ },
+ "request_02": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_03": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_04": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": false,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_05": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": false,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_06": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": false
+ },
+ "request_07": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": false,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_08": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_09": {
+  "all_ok": true,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": true,
+  "changes_ok": true
+ },
+ "request_10": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_11": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": false
+ },
+ "request_12": {
+  "all_ok": true,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": true,
+  "changes_ok": true
+ },
+ "request_13": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": false,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_14": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_15": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_16": {
+  "all_ok": true,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": true,
+  "changes_ok": true
+ },
+ "request_17": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_18": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_19": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": false,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_20": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_21": {
+  "all_ok": false,
+  "affordability_status": false,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": false
+ },
+ "request_22": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_23": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_24": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": false,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_25": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
+  "amount_ok": false,
+  "changes_ok": true
+ }
+}

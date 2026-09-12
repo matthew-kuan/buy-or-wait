@@ -1,0 +1,8 @@
+{
+ "purpose": "two events identical except event_id",
+ "evidence": {},
+ "review_expected": false,
+ "excluded": {
+  "g_rent_3b": "duplicate_of:g_rent_3"
+ }
+}

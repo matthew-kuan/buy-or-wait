@@ -1,0 +1,8 @@
+{
+ "purpose": "unrealized investment gain larger than the requested amount",
+ "evidence": {},
+ "review_expected": false,
+ "excluded": {
+  "g_val_1": "direction_non_cash"
+ }
+}
