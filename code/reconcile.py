@@ -33,6 +33,15 @@ GAP_TOLERANCE_DAYS = 3       # every gap must be within this many days of the me
 AMOUNT_WINDOW = 3            # median of the last N amounts is projected forward
 SAME_OCCURRENCE_DAYS = 3     # a projected occurrence this close to a confirmed row is dropped
 
+# target_stream (from the message schema) -> the event categories that stream covers
+STREAM_CATEGORIES = {
+    "income": frozenset({"salary", "windfall"}),
+    "rent_or_housing": frozenset({"rent", "housing"}),
+    "utilities": frozenset({"utilities"}),
+    "subscription": frozenset({"streaming", "music_subscription", "cloud_storage", "delivery_membership", "gym"}),
+    "other_expense": frozenset(),          # matched by elimination: any non-essential recurring debit
+}
+
 NON_SALARY_WORDS = re.compile(r"\b(bonus|commission|refund|windfall|prize|lottery|reimburse|cashback|gift)\b", re.I)
 
 
@@ -42,6 +51,8 @@ NON_SALARY_WORDS = re.compile(r"\b(bonus|commission|refund|windfall|prize|lotter
 class MessageVerdict:
     """What one message establishes. `kind` is one of:
     confirm            no change (kept for the trace)
+    stream_delay       the stream named by target_stream next occurs on `effective_date`
+    stream_suspend     the stream named by target_stream is not confirmed cash -> not projected
     cancel_event       event_id will not happen                    -> excluded
     not_cash           event_id is not withdrawable / not settled   -> excluded
     internal_transfer  event_ids are a transfer between own accounts -> excluded
@@ -64,6 +75,7 @@ class MessageVerdict:
     temporary_cycles: int = 0
     note: str = ""
     sent_order: int = 0            # position by sent_at; later verdicts win within the same source
+    target_stream: str = "none"    # income | rent_or_housing | utilities | subscription | other_expense | none
 
 
 @dataclass(frozen=True)
@@ -121,6 +133,9 @@ class RecurringSeries:
     amount: Decimal                # projected per-occurrence amount
     overrides: list[tuple[date, Optional[Decimal], Optional[Decimal], int, str]] = field(default_factory=list)
     # (effective_date, new_amount, percent, temporary_cycles, source)
+    day_of_month: Optional[int] = None   # when set, occurrences advance by calendar month on this day
+    suspended: bool = False              # a message says this stream is not confirmed cash: do not project
+    next_override: Optional[date] = None  # a message moved the next occurrence to this date
 
     @property
     def last_event_id(self) -> str:
@@ -132,13 +147,21 @@ class RecurringSeries:
 
     def occurrences(self, start: date, end: date) -> list[tuple[date, Decimal]]:
         """Projected (date, amount) strictly after last_date, within [start, end]."""
+        if self.suspended:
+            return []
         out = []
         k = 1
         remaining_temp = {}
+        if self.next_override is not None and start <= self.next_override <= end:
+            out.append((self.next_override, self.amount))
         while True:
-            on = self.last_date + timedelta(days=self.gap_days * k)
+            on = (_add_months(self.last_date, k, self.day_of_month) if self.day_of_month
+                  else self.last_date + timedelta(days=self.gap_days * k))
             if on > end:
                 break
+            if self.next_override is not None and on <= self.next_override:
+                k += 1
+                continue                       # the moved occurrence replaces the ones it overtakes
             if on >= start:
                 amount = self.amount
                 for eff, new_amount, percent, cycles, _src in self.overrides:
@@ -383,14 +406,88 @@ def build_ledger(user: Profile, events: list[Event], message_verdicts: list[Mess
             groups.setdefault((c.category, _norm(c.description)), []).append(c)
         for key, members in groups.items():
             members.sort(key=lambda c: (c.on, event_sort_key(c.event_id)))
-            series, why = _detect(key, members, by_id)
-            if series is None:
-                ledger.non_recurring_groups.append((key, len(members), why))
+            confirmed = frozenset(_dom(c.on) for c in ledger.scheduled_one_offs
+                                  if c.direction == direction and c.status == "scheduled"
+                                  and (c.category, _norm(c.description)) == key)
+            found, why = _detect(key, members, by_id, confirmed)
+            if found and direction == "credit":
+                live = []
+                for s_ in found:
+                    if _lapsed(s_, as_of_date, confirmed):
+                        ledger.non_recurring_groups.append((key, len(s_.dates), f"lapsed: last {s_.last_date}, next expected before {as_of_date} with nothing scheduled"))
+                    else:
+                        live.append(s_)
+                found = live
+            if not found:
+                if why:
+                    ledger.non_recurring_groups.append((key, len(members), why))
             else:
-                target.append(series)
+                target.extend(found)
+
+    # ---- 8a. confirmed payroll: a scheduled salary-like credit is the employer's own statement that the
+    # stream continues. When no detected series already lands on that day-of-month (a first job with
+    # one prorated payslip, a payroll whose description changed), project a monthly stream on the
+    # scheduled row's day at the scheduled row's amount. The scheduled row itself stays a one-off;
+    # flows() drops the projected occurrence that coincides with it.
+    for c in ledger.scheduled_one_offs:
+        if c.direction != "credit" or c.status != "scheduled" or c.event_id is None:
+            continue
+        e = by_id[c.event_id]
+        if not _is_salary_like(e):
+            continue
+        if any(s.day_of_month is not None and abs(_dom(c.on) - _dom(date(2001, 1, s.day_of_month))) <= DOM_TOLERANCE
+               for s in ledger.recurring_credits):
+            continue
+        settled_same_cat = [h for h in ledger.history if h.direction == "credit" and h.category == e.category]
+        ledger.recurring_credits.append(RecurringSeries(
+            key=(e.category, _norm(e.description)), category=e.category, description=e.description,
+            direction="credit", flexibility=e.flexibility, minimum_allowed_amount=None,
+            event_ids=[h.event_id for h in settled_same_cat] + [c.event_id],
+            dates=[h.on for h in settled_same_cat] + [c.on],
+            amounts=[h.amount for h in settled_same_cat] + [c.amount],
+            gap_days=30, amount=c.amount, day_of_month=c.on.day,
+        ))
+
+    # ---- 8b. essential variable spend: category-level streams for essentials the strict rule rejected
+    # Groceries, transport and utilities rotate descriptions, so the (category, description) test
+    # leaves them unforecast. Settled, uncovered spend in an ESSENTIAL category is pooled per
+    # calendar month; if every full month of history has spend, it is projected at the historical
+    # cadence (median occurrences per month) using the mean per-occurrence amount. Discretionary
+    # categories (dining, shopping, entertainment, ...) are history only, as the spec's
+    # "forecast essential variable spending conservatively" implies.
+    covered = {eid for s in ledger.recurring_debits for eid in s.event_ids}
+    pooled: dict[str, list[CashEvent]] = {}
+    for c in ledger.history:
+        if c.direction != "debit" or c.event_id in covered:
+            continue
+        if c.category not in ESSENTIAL_CATEGORIES and DISCRETIONARY_RATE <= 0:
+            continue                                  # discretionary spend is history only at rate 0
+        pooled.setdefault(c.category, []).append(c)
+    for category, members in pooled.items():
+        series = _detect_variable(category, members, by_id, as_of_date)
+        if series is not None:
+            ledger.recurring_debits.append(series)
 
     # ---- 9. series-level verdicts (salary_change / expense_change) --------------------------
     for v in sorted(message_verdicts, key=lambda v: (v.sent_order, v.message_id)):
+        if v.kind in ("stream_delay", "stream_suspend"):
+            targets = _streams_for(ledger, v.target_stream)
+            if not targets:
+                conflict((), f"{v.kind} for stream {v.target_stream!r} but no such recurring stream was detected",
+                         "unresolved:ignored (no stream invented)", v.message_id)
+                continue
+            for s_ in targets:
+                if v.kind == "stream_suspend":
+                    s_.suspended = True
+                    conflict(tuple(s_.event_ids[-1:]), f"{v.target_stream} stream reported as not confirmed cash",
+                             "stream not projected (safer reading: the credit does not exist)", v.message_id)
+                elif v.effective_date is not None:
+                    s_.next_override = v.effective_date
+                    conflict(tuple(s_.event_ids[-1:]), f"{v.target_stream} stream moved to {v.effective_date}",
+                             "next occurrence re-anchored to the stated date", v.message_id)
+                else:
+                    conflict((), "stream_delay without a date", "unresolved:ignored", v.message_id)
+            continue
         if v.kind == "salary_change":
             if not ledger.recurring_credits:
                 conflict((), "salary_change but no recurring salary detected", "unresolved:ignored (no income invented)", v.message_id)
@@ -423,24 +520,186 @@ def _to_home(v: MessageVerdict, series: RecurringSeries, convert, home: str) -> 
         return v.amount
 
 
-def _detect(key, members: list[CashEvent], by_id) -> tuple[Optional[RecurringSeries], str]:
-    if len(members) < MIN_OCCURRENCES:
-        return None, f"only {len(members)} occurrence(s)"
-    dates = [m.on for m in members]
-    gaps = [(b - a).days for a, b in zip(dates, dates[1:])]
-    if any(g <= 0 for g in gaps):
-        return None, "two occurrences on one day"
-    med = _median_int(gaps)
-    if any(abs(g - med) > GAP_TOLERANCE_DAYS for g in gaps):
-        return None, f"gaps {gaps} not within {GAP_TOLERANCE_DAYS}d of median {med}"
+DOM_TOLERANCE = 1                   # day-of-month scatter allowed inside one calendar-anchored cluster
+MIN_OCCURRENCES_WITH_CONFIRMED = 1  # settled rows needed when a scheduled row on the same day confirms the stream
+
+
+def _month_len(y: int, m: int) -> int:
+    return (date(y + (m == 12), (m % 12) + 1, 1) - timedelta(days=1)).day
+
+
+def _add_months(d: date, k: int, day_of_month: int) -> date:
+    y, m = d.year, d.month + k
+    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+    return date(y, m, min(day_of_month, _month_len(y, m)))
+
+
+def _dom(d: date) -> int:
+    return 31 if d.day >= 28 and d.day == _month_len(d.year, d.month) else d.day
+
+
+def _dom_clusters(dates: list[date]) -> list[list[int]]:
+    """Group indexes by day-of-month within DOM_TOLERANCE (true month-ends collapse to 31)."""
+    clusters: list[tuple[int, list[int]]] = []
+    for i, d in enumerate(dates):
+        for centre, idxs in clusters:
+            if abs(_dom(d) - centre) <= DOM_TOLERANCE:
+                idxs.append(i)
+                break
+        else:
+            clusters.append((_dom(d), [i]))
+    return [idxs for _, idxs in clusters]
+
+
+def _streams_for(ledger: Ledger, target_stream: str) -> list[RecurringSeries]:
+    """The recurring series a target_stream names. income matches credits; the expense streams match
+    by category, and other_expense matches any recurring debit not claimed by a named stream."""
+    if target_stream == "income":
+        return list(ledger.recurring_credits)
+    named = set().union(*(c for k, c in STREAM_CATEGORIES.items() if k != "other_expense"))
+    cats = STREAM_CATEGORIES.get(target_stream, frozenset())
+    if target_stream == "other_expense":
+        return [s for s in ledger.recurring_debits if s.category not in named]
+    return [s for s in ledger.recurring_debits if s.category in cats]
+
+
+def _lapsed(series: RecurringSeries, as_of: date, confirmed_days: frozenset) -> bool:
+    """True when the stream's next occurrence after its last settled one is already more than
+    GAP_TOLERANCE_DAYS overdue at as_of and no scheduled row on that day-of-month confirms it."""
+    if series.day_of_month is not None:
+        if any(abs(series.day_of_month - c) <= DOM_TOLERANCE for c in confirmed_days):
+            return False
+        nxt = _add_months(series.last_date, 1, series.day_of_month)
+    else:
+        nxt = series.last_date + timedelta(days=series.gap_days)
+    return as_of > nxt + timedelta(days=GAP_TOLERANCE_DAYS)
+
+
+def _series(key, members: list[CashEvent], by_id, gap: int, day_of_month: Optional[int]) -> RecurringSeries:
     last = by_id[members[-1].event_id]
     amounts = [m.amount for m in members]
     return RecurringSeries(
         key=key, category=last.category, description=last.description, direction=last.direction,
         flexibility=last.flexibility, minimum_allowed_amount=last.minimum_allowed_amount,
-        event_ids=[m.event_id for m in members], dates=dates, amounts=amounts, gap_days=med,
-        amount=_median_dec(amounts[-AMOUNT_WINDOW:]),
-    ), ""
+        event_ids=[m.event_id for m in members], dates=[m.on for m in members], amounts=amounts, gap_days=gap,
+        amount=_median_dec(amounts[-AMOUNT_WINDOW:]), day_of_month=day_of_month,
+    )
+
+
+def _detect(key, members: list[CashEvent], by_id, confirmed_days: frozenset = frozenset()
+            ) -> tuple[list[RecurringSeries], str]:
+    """Recurring series for one (category, description) group. Calendar-anchored monthly streams
+    (rent on the 5th, salary on the 15th, semi-monthly pay on the 7th and 20th) are detected by
+    day-of-month and projected by calendar month; everything else needs a consistent day gap.
+    `confirmed_days` are days-of-month of scheduled rows for the same group: a stream with a
+    scheduled continuation needs fewer settled occurrences."""
+    dates = [m.on for m in members]
+    if members:
+        anchored = []
+        for idxs in _dom_clusters(dates):
+            sub = [members[i] for i in idxs]
+            sub_dates = [m.on for m in sub]
+            if len({(d.year, d.month) for d in sub_dates}) != len(sub_dates):
+                anchored = []
+                break                                   # two occurrences in one month: not a monthly stream
+            confirmed = any(abs(_dom(sub_dates[-1]) - c) <= DOM_TOLERANCE for c in confirmed_days)
+            if len(sub) < (MIN_OCCURRENCES_WITH_CONFIRMED if confirmed else MIN_OCCURRENCES):
+                continue                                # a stray date (one late payroll) is noise, not a disqualifier
+            anchored.append(_series(key, sub, by_id, 30, sub_dates[-1].day))
+        if anchored and len(anchored) <= 2:
+            return anchored, ""
+    if len(members) < MIN_OCCURRENCES:
+        return [], f"only {len(members)} occurrence(s)"
+    gaps = [(b - a).days for a, b in zip(dates, dates[1:])]
+    if any(g <= 0 for g in gaps):
+        return [], "two occurrences on one day"
+    med = _median_int(gaps)
+    if any(abs(g - med) > GAP_TOLERANCE_DAYS for g in gaps):
+        return [], f"gaps {gaps} not within {GAP_TOLERANCE_DAYS}d of median {med}"
+    return [_series(key, members, by_id, med, None)], ""
+
+
+# categories whose variable spend is a living cost rather than a choice; everything else is history only
+ESSENTIAL_CATEGORIES = frozenset({
+    "groceries", "transport", "utilities", "healthcare", "insurance", "rent", "housing",
+    "education", "debt_repayment", "family_support",
+})
+# Two sweepable parameters for variable (rotating-description) spend:
+#   ESSENTIAL_STAT      which statistic of the historical per-occurrence amounts to project for an
+#                       essential category. "conservative" in the spec argues for an upper quantile.
+#   DISCRETIONARY_RATE  fraction of the historical cadence projected for a non-essential category
+#                       (0 = history only, 1 = the full historical rate). Applied as a scale on the
+#                       projected per-occurrence amount, so the projected monthly total scales linearly.
+ESSENTIAL_STAT = "median"        # mean | median | p75 | p90 | max
+DISCRETIONARY_RATE = Decimal("1.0")
+VARIABLE_MIN_FULL_MONTHS = 2     # full calendar months of history needed for a category stream
+VARIABLE_MARK = "*variable*"     # description slot for a category-level stream
+
+
+def _detect_variable(category: str, members: list[CashEvent], by_id, as_of: date) -> Optional[RecurringSeries]:
+    members.sort(key=lambda c: (c.on, event_sort_key(c.event_id)))
+    first = members[0].on
+    by_month: dict[tuple[int, int], list[CashEvent]] = {}
+    for c in members:
+        by_month.setdefault((c.on.year, c.on.month), []).append(c)
+    # full months: strictly between the first month and the as-of month, so partial edges do not bias the rate
+    span = _months_between((first.year, first.month), (as_of.year, as_of.month))
+    full = [m for m in span if m != (first.year, first.month) and m != (as_of.year, as_of.month)]
+    if len(full) < VARIABLE_MIN_FULL_MONTHS:
+        return None
+    if any(m not in by_month for m in full):
+        return None                                   # a month with no spend: not an essential stream
+    counts = [len(by_month[m]) for m in full]
+    amounts = [c.amount for m in full for c in by_month[m]]
+    per_month = _median_int(counts)
+    if per_month <= 0:
+        return None
+    gap = max(1, int(round(Decimal("30.4") / Decimal(per_month))))
+    amount = _statistic(amounts, ESSENTIAL_STAT)
+    if category not in ESSENTIAL_CATEGORIES:
+        amount *= DISCRETIONARY_RATE
+    flex_counts: dict[str, int] = {}
+    mins = []
+    for c in members:
+        e = by_id[c.event_id]
+        flex_counts[e.flexibility] = flex_counts.get(e.flexibility, 0) + 1
+        if e.minimum_allowed_amount is not None:
+            mins.append(e.minimum_allowed_amount)
+    flexibility = max(flex_counts, key=flex_counts.get)
+    return RecurringSeries(
+        key=(category, VARIABLE_MARK), category=category, description=f"{category} (variable)",
+        direction="debit", flexibility=flexibility, minimum_allowed_amount=_median_dec(mins) if mins else None,
+        event_ids=[c.event_id for c in members], dates=[c.on for c in members], amounts=[c.amount for c in members],
+        gap_days=gap, amount=amount,
+    )
+
+
+def _statistic(values: list[Decimal], stat: str) -> Decimal:
+    """mean / median / p75 / p90 / max over per-occurrence amounts (nearest-rank quantiles)."""
+    if not values:
+        return Decimal(0)
+    if stat == "mean":
+        return sum(values, Decimal(0)) / Decimal(len(values))
+    if stat == "median":
+        return _median_dec(values)
+    if stat == "max":
+        return max(values)
+    if stat in ("p75", "p90"):
+        q = Decimal("0.75") if stat == "p75" else Decimal("0.90")
+        ordered = sorted(values)
+        rank = int((q * Decimal(len(ordered))).to_integral_value(rounding="ROUND_CEILING"))
+        return ordered[min(max(rank, 1), len(ordered)) - 1]
+    raise ValueError(f"unknown ESSENTIAL_STAT {stat!r}")
+
+
+def _months_between(a: tuple[int, int], b: tuple[int, int]) -> list[tuple[int, int]]:
+    out, y, m = [], a[0], a[1]
+    while (y, m) <= b:
+        out.append((y, m))
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
 
 
 def _apply_verdict(v: MessageVerdict, user: Profile, work, by_id, ledger: Ledger, exclude, conflict,

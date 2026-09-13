@@ -8,7 +8,7 @@
    "affordability_status": "affordable_with_plan",
    "recommended_payment_method": "full_payment",
    "payment_plan": "2026-03-01:5000",
-   "earliest_date_for_full_payment": "2026-03-28",
+   "earliest_date_for_full_payment": "2026-03-25",
    "spending_changes_needed": "reduce_to:g_din_3:50",
    "decision_explanation": "Reduce the weekend dining to ZAR 50, then pay ZAR 5,000 today."
   }

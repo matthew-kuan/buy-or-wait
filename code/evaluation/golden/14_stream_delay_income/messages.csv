@@ -1,0 +1,2 @@
+message_id,user_id,request_id,related_event_id,sent_at,source_type,message_text
+m3,u1,req_1,,2026-02-27T09:00:00Z,employer,Payroll update: your confirmed salary is now expected on 2026-04-05. Please use the revised date.

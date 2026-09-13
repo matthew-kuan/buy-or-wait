@@ -1,0 +1,19 @@
+{
+ "purpose": "a message says the income stream is not confirmed cash",
+ "evidence": {
+  "messages": {
+   "m4": {
+    "verdict": "cancel",
+    "target_event_id": null,
+    "target_stream": "income",
+    "new_amount": null,
+    "new_currency": null,
+    "new_date": null,
+    "recurring": true,
+    "confidence": 0.9,
+    "quote": "balance is not withdrawable until the payout shows as completed"
+   }
+  }
+ },
+ "review_expected": false
+}

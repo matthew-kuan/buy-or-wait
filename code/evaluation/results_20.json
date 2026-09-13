@@ -9,20 +9,20 @@
   "changes_ok": true
  },
  "request_02": {
-  "all_ok": false,
+  "all_ok": true,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
+  "earliest_date_for_full_payment": true,
   "payment_plan": true,
-  "amount_ok": false,
+  "amount_ok": true,
   "changes_ok": true
  },
  "request_03": {
   "all_ok": false,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
-  "payment_plan": false,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
  },
@@ -37,19 +37,19 @@
  },
  "request_05": {
   "all_ok": false,
-  "affordability_status": false,
-  "recommended_payment_method": false,
-  "earliest_date_for_full_payment": false,
-  "payment_plan": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
  },
  "request_06": {
   "all_ok": false,
   "affordability_status": false,
-  "recommended_payment_method": true,
+  "recommended_payment_method": false,
   "earliest_date_for_full_payment": false,
-  "payment_plan": true,
+  "payment_plan": false,
   "amount_ok": false,
   "changes_ok": false
  },
@@ -66,8 +66,8 @@
   "all_ok": false,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
-  "payment_plan": false,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
  },
@@ -99,20 +99,20 @@
   "changes_ok": false
  },
  "request_12": {
-  "all_ok": true,
-  "affordability_status": true,
-  "recommended_payment_method": true,
-  "earliest_date_for_full_payment": true,
-  "payment_plan": true,
-  "amount_ok": true,
-  "changes_ok": true
- },
- "request_13": {
   "all_ok": false,
   "affordability_status": false,
   "recommended_payment_method": false,
   "earliest_date_for_full_payment": false,
   "payment_plan": false,
+  "amount_ok": false,
+  "changes_ok": true
+ },
+ "request_13": {
+  "all_ok": false,
+  "affordability_status": true,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
  },
@@ -156,16 +156,16 @@
   "all_ok": false,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
-  "payment_plan": false,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
  },
  "request_19": {
   "all_ok": false,
   "affordability_status": true,
-  "recommended_payment_method": false,
-  "earliest_date_for_full_payment": false,
+  "recommended_payment_method": true,
+  "earliest_date_for_full_payment": true,
   "payment_plan": false,
   "amount_ok": false,
   "changes_ok": true
@@ -192,7 +192,7 @@
   "all_ok": false,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
+  "earliest_date_for_full_payment": true,
   "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
@@ -201,18 +201,18 @@
   "all_ok": false,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
-  "payment_plan": false,
+  "earliest_date_for_full_payment": true,
+  "payment_plan": true,
   "amount_ok": false,
   "changes_ok": true
  },
  "request_24": {
-  "all_ok": false,
+  "all_ok": true,
   "affordability_status": true,
   "recommended_payment_method": true,
-  "earliest_date_for_full_payment": false,
+  "earliest_date_for_full_payment": true,
   "payment_plan": true,
-  "amount_ok": false,
+  "amount_ok": true,
   "changes_ok": true
  },
  "request_25": {

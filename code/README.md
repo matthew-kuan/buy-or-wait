@@ -1,32 +1,46 @@
 # Buy or Wait? — deterministic affordability agent
 
 Decides, for every request in `dataset/requests.csv`, whether the user should pay in full, pay
-partially, use a supplied installment option, wait, or not proceed — and writes `output.csv`.
+partially, use a supplied installment option, wait, or not proceed.
 
-## Run
+## Where the answers are
+
+**The final predictions are the repository-root `output.csv`.**
+`dataset/output.csv` is the organizers' blank template and is never written to — it exists only to
+document the column order. If the two disagree, the root file is the submission.
+
+| path | what it is |
+|---|---|
+| `./output.csv` | **the submission** — 250 prediction rows |
+| `dataset/output.csv` | blank template, untouched |
+| `code/evaluation/usage_report.md` | token and cost report for the run that wrote `./output.csv` |
+
+## Regenerate from a clean clone
 
 ```bash
+git clone <repo> && cd <repo>
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=...        # or copy .env.example to .env and export it; see below
-python code/main.py                 # full run: cache first, API only for cache misses
-python code/main.py --dry-run       # zero API calls: replays .cache/ (shipped in code.zip)
+cp .env.example .env          # then put your Google AI Studio key in GEMINI_API_KEY
+python code/main.py           # writes ./output.csv and code/evaluation/usage_report.md
 ```
 
-`output.csv` lands in the **repository root** with exactly the 8 required columns and one row per
-request. `code/evaluation/usage_report.md` is rewritten on every run with that run's token usage
-and cost. Run from any working directory — every path resolves relative to `code/`.
+`python code/main.py --dry-run` reproduces the same file from the shipped `.cache/` with **zero API
+calls** and no key. Everything resolves relative to `code/`, so the working directory does not matter.
 
 Other commands:
 
 ```bash
 python -m pytest code/tests -q                       # unit tests (schema, forecast, solver)
-python code/evaluation/main.py --note "what changed" # score against the 25 samples + 13 golden fixtures
+python code/evaluation/main.py --note "what changed" # score the 25 samples + 16 golden fixtures
+python code/extraction.py --check-model              # confirm the model id is visible to your key
 python code/audit.py                                 # data audit of dataset/
-python code/package.py                               # build code.zip for submission
+python code/package.py                               # build code.zip
 ```
 
-Secrets are read from environment variables only (`ANTHROPIC_API_KEY`, optional
-`BUY_OR_WAIT_MODEL`). Nothing reads `.env` directly; export it with your shell or a dotenv runner.
+Secrets come from environment variables only (`GEMINI_API_KEY`; optional `BUY_OR_WAIT_MODEL`,
+`GEMINI_RPM`, `GEMINI_THINKING_LEVEL`). `.env` is loaded with `load_dotenv(override=False)`, so a
+real environment variable always wins, and `.env` is gitignored and excluded from `code.zip`.
 
 ## Architecture
 
@@ -36,10 +50,12 @@ dataset/*.csv, dataset/media/images/*.png
         ▼
   io_layer.py      typed records (Decimal money, parsed dates), indexes, dated FX conversion
         │
-        ├─────────────► extraction.py   (the ONLY model calls)
+        ├─────────────► extraction.py   (the ONLY model calls: Google Gemini, google-genai SDK)
         │                 call 1: one classification per message  → verdict JSON
         │                 call 2: one reading per image           → amount/currency/date JSON
+        │                 native structured output (response_mime_type + response_schema, enums in schema)
         │                 validate_json → one re-ask → neutral default; sha256 disk cache
+        │                 token-bucket RPM limiter (free tier), backoff+jitter on 429/5xx
         │                 <<<UNTRUSTED>>> delimiters + injection flag; nothing here computes
         ▼
   reconcile.py     per-user Ledger: exclusions (cancelled/failed/non-cash/unrealized/pending
@@ -92,9 +108,13 @@ Three containment layers make this enforceable rather than aspirational:
    number not present in the solver's facts; `schema.validate_row` runs on every row.
 
 Reproducibility: every model response is cached under `.cache/` keyed on
-`sha256(model, prompt_version, system, prompt, input bytes)`. Claude Opus 5 does not accept a
-temperature parameter, so run-to-run stability comes from the cache; `--dry-run` replays it
-with zero calls. `code.zip` ships the cache.
+`sha256(provider, model, prompt_version, system, prompt, schema, input bytes)`; requests are sent
+with temperature 0 and a fixed seed, and `--dry-run` replays the cache with zero calls.
+`code.zip` ships the cache.
+
+Provider: Google Gemini (`gemini-3.5-flash` by default) through an AI Studio key on free-tier
+quota. `main.py` prints the projected wall time at the configured RPM before it starts;
+`python code/extraction.py --check-model` confirms the model id is available to your key.
 
 ## Decision rules, briefly
 

@@ -25,16 +25,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
+try:
+    from dotenv import load_dotenv
+except ImportError:                      # dotenv is optional: exported variables still work
+    load_dotenv = None
+
 import logger  # noqa: E402
 import schema  # noqa: E402
-from extraction import PRICE_PER_MTOK, Extractor  # noqa: E402
+from extraction import (FULL_RUN_CALLS, MODEL_CHOICE_NOTE, PRICE_PER_MTOK, PRICING_DATE, PRICING_NOTE,  # noqa: E402
+                        PROVIDER, RPM,
+                        Extractor, default_workers, projected_wall_time, uncached_items)
 from io_layer import load_dataset  # noqa: E402
 from pipeline import Evidence, decide, gather_evidence  # noqa: E402
 
 OUTPUT_PATH = os.path.join(ROOT, "output.csv")
 FAILURES_PATH = os.path.join(HERE, "evaluation", "failures.csv")
 USAGE_PATH = os.path.join(HERE, "evaluation", "usage_report.md")
-PRICING_DATE = "2026-09-12"      # date the PRICE_PER_MTOK constants were checked against Anthropic's public pricing
 
 
 def safe_row(request, profile, reason: str) -> dict:
@@ -49,27 +55,31 @@ def safe_row(request, profile, reason: str) -> dict:
 def write_usage_report(stats: dict, n_requests: int, mode: str, wall: float, validation_failures: int,
                        pipeline_failures: int) -> None:
     calls, cache_hits = stats["calls"], stats["cache_hits"]
-    in_tok, out_tok = stats["input_tokens"], stats["output_tokens"]
-    cin, cout = stats["cached_input_tokens"], stats["cached_output_tokens"]
-    total_live = in_tok + out_tok
+    in_tok, out_tok, th_tok = stats["input_tokens"], stats["output_tokens"], stats["thoughts_tokens"]
+    cin, cout, cth = stats["cached_input_tokens"], stats["cached_output_tokens"], stats["cached_thoughts_tokens"]
+    total_live = in_tok + out_tok + th_tok
+    total_cached = cin + cout + cth
     cost_live = Decimal(stats["estimated_cost_usd"])
-    cost_cached = Decimal(0)
-    for model, m in stats["by_model"].items():
-        pin, pout = PRICE_PER_MTOK.get(model, (Decimal(0), Decimal(0)))
-        cost_cached += (Decimal(m["cached_input_tokens"]) * pin + Decimal(m["cached_output_tokens"]) * pout) / Decimal(1_000_000)
+    cost_cached = Decimal(stats["estimated_cached_cost_usd"])
+    models = list(stats["by_model"]) or [stats["model"]]
     lines = [
         "# Token usage and cost report",
         "",
         f"Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')} by `code/main.py` "
         f"for the full-dataset run that produced `output.csv` ({n_requests} requests, mode = **{mode}**).",
         "",
+        f"**Quota note.** {PRICING_NOTE}",
+        "",
+        f"**{MODEL_CHOICE_NOTE}**",
+        "",
         "## Providers and models",
         "",
         "| provider | model | role |",
         "|---|---|---|",
     ]
-    for model in stats["by_model"] or {stats["model"]: None}:
-        lines.append(f"| Anthropic (Claude API) | `{model}` | message classification (call 1) and image reading (call 2) |")
+    for model in models:
+        lines.append(f"| {PROVIDER} | `{model}` | message classification (call 1) and image reading (call 2); "
+                     f"native structured output (response_mime_type=application/json + response_schema) |")
     lines += [
         "",
         "Everything numeric in `output.csv` is computed deterministically in Python; the model only reads "
@@ -77,14 +87,19 @@ def write_usage_report(stats: dict, n_requests: int, mode: str, wall: float, val
         "",
         "## Pricing constants",
         "",
-        f"USD per 1M tokens, as checked on {PRICING_DATE} against Anthropic's public price list:",
+        f"List price, USD per 1M tokens, pulled {PRICING_DATE} from https://ai.google.dev/gemini-api/docs/pricing "
+        f"(paid tier; the free tier is charged nothing). Gemini bills thinking tokens at the output rate.",
         "",
-        "| model | input $/1M | output $/1M |",
+        "| model | input $/1M | output $/1M (incl. thinking) |",
         "|---|---|---|",
     ]
     for model, (pin, pout) in PRICE_PER_MTOK.items():
         lines.append(f"| `{model}` | {pin} | {pout} |")
     lines += [
+        "",
+        "Token field mapping: input = `usage_metadata.prompt_token_count`, output = "
+        "`usage_metadata.candidates_token_count`, reasoning = `usage_metadata.thoughts_token_count` "
+        "(reported separately, priced as output).",
         "",
         "## This run (live API calls)",
         "",
@@ -92,32 +107,36 @@ def write_usage_report(stats: dict, n_requests: int, mode: str, wall: float, val
         "|---|---|",
         f"| model calls made | {calls} |",
         f"| cache hits (no call) | {cache_hits} |",
-        f"| re-asks after schema rejection | {stats['reasks']} |",
+        f"| re-asks after schema rejection (second line of defense) | {stats['reasks']} |",
         f"| fallbacks to the neutral default | {stats['fallbacks']} |",
         f"| retries (429/5xx backoff) | {stats['retries']} |",
-        f"| refusals | {stats['refusals']} |",
+        f"| seconds spent waiting on the rate limiter | {stats['rate_limit_waits_s']:.0f} |",
+        f"| empty/blocked responses | {stats['refusals']} |",
         f"| injection flags | {stats['injections_flagged']} |",
-        f"| input tokens | {in_tok:,} |",
-        f"| output tokens | {out_tok:,} |",
+        f"| input tokens (prompt_token_count) | {in_tok:,} |",
+        f"| output tokens (candidates_token_count) | {out_tok:,} |",
+        f"| reasoning tokens (thoughts_token_count, billed as output) | {th_tok:,} |",
         f"| total tokens | {total_live:,} |",
         f"| average tokens per request ({n_requests}) | {total_live / n_requests:,.1f} |",
-        f"| average tokens per model call | {(total_live / calls):,.1f} |" if calls else "| average tokens per model call | n/a (no live calls) |",
-        f"| estimated total cost (USD) | {cost_live:.4f} |",
-        f"| estimated cost per request (USD) | {(cost_live / n_requests):.6f} |",
+        (f"| average tokens per model call | {(total_live / calls):,.1f} |" if calls
+         else "| average tokens per model call | n/a (no live calls) |"),
+        f"| list-price cost of this run (USD) | {cost_live:.4f} |",
+        f"| list-price cost per request (USD) | {(cost_live / n_requests):.6f} |",
         f"| wall time (s) | {wall:.1f} |",
         f"| rows failing validation | {validation_failures} |",
         f"| rows produced by the failure fallback | {pipeline_failures} |",
         "",
         "## Per-model totals",
         "",
-        "| model | live calls | cache hits | live input | live output | cached input | cached output | live cost (USD) |",
-        "|---|---|---|---|---|---|---|---|",
+        "| model | live calls | cache hits | live input | live output | live reasoning | cached input | cached output | cached reasoning | list cost live (USD) |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for model, m in stats["by_model"].items():
         pin, pout = PRICE_PER_MTOK.get(model, (Decimal(0), Decimal(0)))
-        c = (Decimal(m["input_tokens"]) * pin + Decimal(m["output_tokens"]) * pout) / Decimal(1_000_000)
+        c = (Decimal(m["input_tokens"]) * pin + Decimal(m["output_tokens"] + m["thoughts_tokens"]) * pout) / Decimal(1_000_000)
         lines.append(f"| `{model}` | {m['calls']} | {m['cache_hits']} | {m['input_tokens']:,} | {m['output_tokens']:,} | "
-                     f"{m['cached_input_tokens']:,} | {m['cached_output_tokens']:,} | {c:.4f} |")
+                     f"{m['thoughts_tokens']:,} | {m['cached_input_tokens']:,} | {m['cached_output_tokens']:,} | "
+                     f"{m['cached_thoughts_tokens']:,} | {c:.4f} |")
     lines += [
         "",
         "## Cached responses replayed in this run",
@@ -129,10 +148,11 @@ def write_usage_report(stats: dict, n_requests: int, mode: str, wall: float, val
         "|---|---|",
         f"| cached input tokens | {cin:,} |",
         f"| cached output tokens | {cout:,} |",
-        f"| cost of producing the cached answers (USD) | {cost_cached:.4f} |",
-        f"| overall (live + cached) tokens | {total_live + cin + cout:,} |",
-        f"| overall (live + cached) cost (USD) | {(cost_live + cost_cached):.4f} |",
-        f"| overall cost per request (USD) | {((cost_live + cost_cached) / n_requests):.6f} |",
+        f"| cached reasoning tokens | {cth:,} |",
+        f"| list-price cost of producing the cached answers (USD) | {cost_cached:.4f} |",
+        f"| overall (live + cached) tokens | {total_live + total_cached:,} |",
+        f"| overall (live + cached) list-price cost (USD) | {(cost_live + cost_cached):.4f} |",
+        f"| overall list-price cost per request (USD) | {((cost_live + cost_cached) / n_requests):.6f} |",
         "",
         "No API keys, credentials, or configuration values are included in this report.",
         "",
@@ -145,9 +165,12 @@ def write_usage_report(stats: dict, n_requests: int, mode: str, wall: float, val
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Buy or Wait? pipeline")
     ap.add_argument("--dry-run", action="store_true", help="use only the disk cache; make no API calls")
-    ap.add_argument("--workers", type=int, default=8, help="bounded concurrency for extraction")
+    ap.add_argument("--workers", type=int, default=None, help="concurrency for extraction (default: 1 at free-tier RPM, else 8)")
+    ap.add_argument("--rpm", type=int, default=RPM, help="requests per minute for the token-bucket limiter")
     ap.add_argument("--no-evidence", action="store_true", help="ignore messages and images entirely")
     args = ap.parse_args(argv)
+    if load_dotenv is not None:
+        load_dotenv(override=False)      # once, before any client is created; exported variables win
     mode = "dry-run" if args.dry_run else ("no-evidence" if args.no_evidence else "live")
 
     t0 = time.perf_counter()
@@ -158,9 +181,12 @@ def main(argv=None) -> int:
     extractor = None
     evidence = Evidence()
     if not args.no_evidence:
-        extractor = Extractor(dry_run=args.dry_run or not os.environ.get("ANTHROPIC_API_KEY"))
-        from extraction import run_all  # noqa: F401  (imported here so --no-evidence never touches the SDK)
-        evidence = gather_evidence_concurrent(ds, extractor, args.workers)
+        extractor = Extractor(dry_run=args.dry_run or not os.environ.get("GEMINI_API_KEY"), rpm=args.rpm)
+        workers = args.workers if args.workers is not None else default_workers(args.rpm)
+        print(extractor.plan(uncached_items(ds, extractor)))
+        if extractor.dry_run:
+            print("dry run: no API calls will be made; uncached items fall back to the neutral default")
+        evidence = gather_evidence_concurrent(ds, extractor, workers)
 
     # ---- requests
     rows, failures, review = [], [], []
@@ -229,13 +255,14 @@ def main(argv=None) -> int:
     print(f"mode={mode} wall_time={wall:.1f}s")
     print("model calls by model: " + (", ".join(f"{m}={v['calls']}" for m, v in stats["by_model"].items()) or "none"))
     print(f"input_tokens={stats['input_tokens']:,} output_tokens={stats['output_tokens']:,} "
-          f"(cached replay: in={stats['cached_input_tokens']:,} out={stats['cached_output_tokens']:,})")
+          f"reasoning_tokens={stats['thoughts_tokens']:,} (cached replay: in={stats['cached_input_tokens']:,} "
+          f"out={stats['cached_output_tokens']:,} reasoning={stats['cached_thoughts_tokens']:,})")
     print(f"cache_hits={stats['cache_hits']} reasks={stats['reasks']} fallbacks={stats['fallbacks']} "
           f"retries={stats['retries']} injection_flags={stats['injections_flagged']}")
     print(f"validation_failures={validation_failures} pipeline_failures={len(failures)} "
           f"requests_flagged_for_review={len(review)}")
     print(f"status counts: {dict(Counter(r['affordability_status'] for r in rows))}")
-    print(f"estimated live cost USD {Decimal(stats['estimated_cost_usd']):.4f}")
+    print(f"list-price cost of live calls USD {Decimal(stats['estimated_cost_usd']):.4f} (free-tier quota: billed 0)")
 
     write_usage_report(stats, n, mode, wall, validation_failures, len(failures))
     logger.append_run_summary({"rows": n, "mode": mode, "calls": stats["calls"], "cache_hits": stats["cache_hits"],
@@ -249,7 +276,7 @@ def gather_evidence_concurrent(ds, extractor, workers: int) -> Evidence:
     """gather_evidence with the extraction pass run under a bounded thread pool."""
     import extraction
     original = extraction.run_all
-    extraction.run_all = lambda ds_, x_: original(ds_, x_, workers=workers)
+    extraction.run_all = lambda ds_, x_, workers_=None: original(ds_, x_, workers=workers)
     try:
         return gather_evidence(ds, extractor)
     finally:

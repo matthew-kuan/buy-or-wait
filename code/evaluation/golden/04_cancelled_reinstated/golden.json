@@ -5,6 +5,7 @@
    "m2": {
     "verdict": "confirm",
     "target_event_id": "g_can_1",
+    "target_stream": "none",
     "new_amount": 4000,
     "new_currency": "ZAR",
     "new_date": "2026-03-06",

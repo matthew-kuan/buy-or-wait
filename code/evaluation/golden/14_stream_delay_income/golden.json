@@ -1,0 +1,19 @@
+{
+ "purpose": "a message delays the whole income stream, not one row",
+ "evidence": {
+  "messages": {
+   "m3": {
+    "verdict": "delay",
+    "target_event_id": null,
+    "target_stream": "income",
+    "new_amount": null,
+    "new_currency": null,
+    "new_date": "2026-04-05",
+    "recurring": true,
+    "confidence": 0.95,
+    "quote": "confirmed salary is now expected on 2026-04-05"
+   }
+  }
+ },
+ "review_expected": false
+}

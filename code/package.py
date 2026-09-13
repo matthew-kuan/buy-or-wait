@@ -14,7 +14,7 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = os.path.join(ROOT, "code.zip")
-EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git"}
+EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", ".ipynb_checkpoints"}
 
 
 def add_tree(z: zipfile.ZipFile, base: str, arc_prefix: str) -> int:
@@ -34,10 +34,14 @@ def add_tree(z: zipfile.ZipFile, base: str, arc_prefix: str) -> int:
 def main() -> int:
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
         n = add_tree(z, HERE, "code")
+        # The spec writes the required path as `evaluation/usage_report.md`, which reads as
+        # zip-root-relative, while the same folder is described as part of the code package. The
+        # reading is ambiguous and duplication is cheap, so ship the tree at BOTH paths.
+        n += add_tree(z, os.path.join(HERE, "evaluation"), "evaluation")
         cache = os.path.join(ROOT, ".cache")
         if os.path.isdir(cache):
             n += add_tree(z, cache, ".cache")
-        for fn in ("requirements.txt", ".env.example"):
+        for fn in ("requirements.txt", ".env.example"):   # .env itself is never added
             p = os.path.join(ROOT, fn)
             if os.path.exists(p):
                 z.write(p, fn)

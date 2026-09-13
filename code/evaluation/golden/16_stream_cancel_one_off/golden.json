@@ -1,0 +1,19 @@
+{
+ "purpose": "cancel naming a stream but only a one-off inflow: stream not suspended",
+ "evidence": {
+  "messages": {
+   "m5": {
+    "verdict": "cancel",
+    "target_event_id": null,
+    "target_stream": "income",
+    "new_amount": null,
+    "new_currency": null,
+    "new_date": null,
+    "recurring": false,
+    "confidence": 0.9,
+    "quote": "final amount and payment date have not been approved"
+   }
+  }
+ },
+ "review_expected": false
+}

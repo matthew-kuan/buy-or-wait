@@ -83,6 +83,7 @@ def evidence_from_stub(ds: Dataset, stub: dict) -> Evidence:
         c = MessageClassification(m.message_id, payload["verdict"], payload["target_event_id"], _dec(payload["new_amount"]),
                                   payload["new_currency"], _date(payload["new_date"]), bool(payload["recurring"]),
                                   float(payload["confidence"]), str(payload["quote"]),
+                                  target_stream=payload.get("target_stream", "none"),
                                   injection_suspected=bool(_INJECTION.search(m.message_text)), fallback=fallback)
         if c.injection_suspected:
             ev.review_flags.append((m.user_id, m.message_id, "injection_suspected"))
